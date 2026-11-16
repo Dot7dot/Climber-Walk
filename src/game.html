@@ -116,6 +116,9 @@ body.do #near,body.wo #near{display:none}body.cm #near{bottom:118px}
 #load h1{margin:0 0 6px;font-size:34px;letter-spacing:.3em;font-weight:300}
 #load p{margin:0;color:var(--dim);font-size:13px}
 #load.off{opacity:0;pointer-events:none}
+#load p{max-width:min(440px,86vw);margin:0 auto;line-height:1.7}
+#load .ob{display:inline-block;margin-top:14px;padding:9px 20px;border-radius:99px;background:var(--acc);color:#1d2614;font-weight:700;text-decoration:none}
+#load .dg{display:block;margin-top:14px;font-size:10px;opacity:.5;word-break:break-all}
 @media (max-width:640px){
  .panel,#dex{top:auto;height:56vh;width:100vw;border-radius:20px 20px 0 0;transform:translateY(105%)}
  #dex{height:72vh}
@@ -596,7 +599,7 @@ struct TO{@builtin(position) pos:vec4f,@location(0) wp:vec3f,@location(1) n:vec3
  let V=normalize(g.cam.xyz-p);
  var c=lit(alb,N,p,ao,0.,mossA*.15,0.02*tr,V);
  return vec4f(fog(c,p),1.);}
-struct PO{@builtin(position) pos:vec4f,@location(0) wp:vec3f,@location(1) n:vec3f,@location(2) uv:vec2f,@location(3) @interpolate(flat) mat:u32,@location(4) d:vec4f};
+struct PO{@builtin(position) pos:vec4f,@location(0) wp:vec3f,@location(1) n:vec3f,@location(2) uv:vec2f,@location(3) @interpolate(flat,either) mat:u32,@location(4) d:vec4f};
 @vertex fn vsP(@location(0) p:vec3f,@location(1) n:vec4f,@location(2) uv:vec2f,@location(3) m:vec4u,@location(4) i0:vec4f,@location(5) i1:vec4f)->PO{
  var o:PO;var lp=p*i0.w;let mode=m.w;
  if(mode==1u){lp.y+=lp.x*i1.z+lp.z*i1.w;}else if(mode==0u){lp.x+=lp.y*i1.z;lp.z+=lp.y*i1.w;}
@@ -701,7 +704,7 @@ struct BO{@builtin(position) pos:vec4f,@location(0) a:f32};
 const W_CHR=W_COMMON+/*wgsl*/`
 struct CU{b:array<mat4x4f,96>};
 @group(1) @binding(0) var<uniform> cu:CU;
-struct CO{@builtin(position) pos:vec4f,@location(0) wp:vec3f,@location(1) n:vec3f,@location(2) col:vec4f,@location(3) @interpolate(flat) bone:u32};
+struct CO{@builtin(position) pos:vec4f,@location(0) wp:vec3f,@location(1) n:vec3f,@location(2) col:vec4f,@location(3) @interpolate(flat,either) bone:u32};
 @vertex fn vsC(@location(0) p:vec3f,@location(1) n:vec3f,@location(2) col:vec4f,@location(3) b:u32)->CO{
  var o:CO;let M=cu.b[b];let wp=(M*vec4f(p,1.)).xyz;o.pos=g.vp*vec4f(wp,1.);o.wp=wp;o.n=(M*vec4f(n,0.)).xyz;o.col=col;o.bone=b;return o;}
 @fragment fn fsC(i:CO)->@location(0) vec4f{
@@ -762,10 +765,13 @@ fn h(p:vec2f)->f32{var q=fract(vec3f(p.xyx)*.1031);q+=dot(q,q.yzx+33.33);return 
 // ================================================================ GPU
 let dev,ctx,fmt,BGL0,BGLC,BGLF,BGLP,UB,CUB,PUB,PQB,mapTex,signTex,samp,BG0,BGC,PIPE={};
 let RT={},VB,IB,IIB,TERR={},CHR={vb:null,ib:null,n:0},TRASHM={vb:null,ib:null,n:0},BLOB={},FOGB;
+let COMPAT=false,HF='rgba16float';
 async function initGPU(){
  if(!navigator.gpu)throw new Error('nogpu');
- const ad=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});if(!ad)throw new Error('nogpu');
- dev=await ad.requestDevice();
+ let ad=null;for(const o of[{powerPreference:'high-performance'},{},{featureLevel:'compatibility'}]){try{ad=await navigator.gpu.requestAdapter(o)}catch(e){}if(ad)break}
+ if(!ad)throw new Error('noadapter');
+ const core=ad.features.has('core-features-and-limits')&&!/[?&]compat/.test(location.search);COMPAT=!core;
+ try{dev=await ad.requestDevice({requiredFeatures:core?['core-features-and-limits']:[]})}catch(e){throw new Error('noadapter')}
  dev.lost.then(i=>console.error('DEVICE LOST',i.reason,i.message));dev.addEventListener('uncapturederror',e=>console.error('GPU',e.error.message));
  ctx=$('#cv').getContext('webgpu');fmt=navigator.gpu.getPreferredCanvasFormat();ctx.configure({device:dev,format:fmt,alphaMode:'opaque'});
 }
@@ -814,16 +820,16 @@ function makePipes(){
  BGLF=dev.createBindGroupLayout({entries:[{binding:0,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'depth',multisampled:true}}]});
  BGLP=dev.createBindGroupLayout({entries:[{binding:0,visibility:GPUShaderStage.FRAGMENT,texture:{}},{binding:1,visibility:GPUShaderStage.FRAGMENT,sampler:{}},{binding:2,visibility:GPUShaderStage.FRAGMENT,buffer:{}},{binding:3,visibility:GPUShaderStage.FRAGMENT,buffer:{}}]});
  const L0=dev.createPipelineLayout({bindGroupLayouts:[BGL0]}),LC=dev.createPipelineLayout({bindGroupLayouts:[BGL0,BGLC]}),LF=dev.createPipelineLayout({bindGroupLayouts:[BGL0,BGLF]}),LP=dev.createPipelineLayout({bindGroupLayouts:[BGLP]});
- const mS=dev.createShaderModule({code:W_SCENE}),mC=dev.createShaderModule({code:W_CHR}),mF=dev.createShaderModule({code:W_FOG}),mP=dev.createShaderModule({code:W_POST});
+ const mS=dev.createShaderModule({code:W_SCENE}),mC=dev.createShaderModule({code:W_CHR}),mF=dev.createShaderModule({code:COMPAT?W_FOG.replace(/@group\(1\)\s*@binding\(0\)\s*var\s*dT[^;]*;/,'').replace(/textureLoad\(dT[^;]*\)/,'0.'):W_FOG}),mP=dev.createShaderModule({code:W_POST});
  [mS,mC,mF,mP].forEach(m=>m.getCompilationInfo&&m.getCompilationInfo().then(i=>i.messages.forEach(x=>console.error('WGSL',x.lineNum,x.message))));
- const HF='rgba16float',ms={count:4},ds=(w=true,cmp='greater')=>({format:'depth32float',depthWriteEnabled:w,depthCompare:cmp});
+ const ms={count:4},ds=(w=true,cmp='greater')=>({format:'depth32float',depthWriteEnabled:w,depthCompare:cmp});
  const P=(o)=>dev.createRenderPipeline(o);
  PIPE.terr=P({layout:L0,vertex:{module:mS,entryPoint:'vsT',buffers:[{arrayStride:24,attributes:[{shaderLocation:0,offset:0,format:'float32x3'},{shaderLocation:1,offset:12,format:'float32x3'}]}]},fragment:{module:mS,entryPoint:'fsT',targets:[{format:HF}]},primitive:{topology:'triangle-list',cullMode:'none'},depthStencil:ds(),multisample:ms});
  PIPE.prop=P({layout:L0,vertex:{module:mS,entryPoint:'vsP',buffers:[{arrayStride:28,attributes:[{shaderLocation:0,offset:0,format:'float32x3'},{shaderLocation:1,offset:12,format:'snorm8x4'},{shaderLocation:2,offset:16,format:'float32x2'},{shaderLocation:3,offset:24,format:'uint8x4'}]},{arrayStride:32,stepMode:'instance',attributes:[{shaderLocation:4,offset:0,format:'float32x4'},{shaderLocation:5,offset:16,format:'float32x4'}]}]},fragment:{module:mS,entryPoint:'fsP',targets:[{format:HF}]},primitive:{topology:'triangle-list',cullMode:'none'},depthStencil:ds(),multisample:{count:4,alphaToCoverageEnabled:true}});
  PIPE.sky=P({layout:L0,vertex:{module:mS,entryPoint:'vsS'},fragment:{module:mS,entryPoint:'fsS',targets:[{format:HF}]},depthStencil:ds(false,'equal'),multisample:ms});
  PIPE.blob=P({layout:L0,vertex:{module:mS,entryPoint:'vsB',buffers:[{arrayStride:16,attributes:[{shaderLocation:0,offset:0,format:'float32x4'}]}]},fragment:{module:mS,entryPoint:'fsB',targets:[{format:HF,blend:{color:{srcFactor:'src-alpha',dstFactor:'one-minus-src-alpha'},alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha'}}}]},depthStencil:ds(false,'greater-equal'),multisample:ms});
  PIPE.chr=P({layout:LC,vertex:{module:mC,entryPoint:'vsC',buffers:[{arrayStride:32,attributes:[{shaderLocation:0,offset:0,format:'float32x3'},{shaderLocation:1,offset:12,format:'float32x3'},{shaderLocation:2,offset:24,format:'unorm8x4'},{shaderLocation:3,offset:28,format:'uint32'}]}]},fragment:{module:mC,entryPoint:'fsC',targets:[{format:HF}]},primitive:{cullMode:'none'},depthStencil:ds(),multisample:ms});
- PIPE.fog=P({layout:LF,vertex:{module:mF,entryPoint:'vsF',buffers:[{arrayStride:32,stepMode:'instance',attributes:[{shaderLocation:0,offset:0,format:'float32x4'},{shaderLocation:1,offset:16,format:'float32x4'}]}]},fragment:{module:mF,entryPoint:'fsF',targets:[{format:HF,blend:{color:{srcFactor:'one',dstFactor:'one-minus-src-alpha'},alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha'}}}]},primitive:{topology:'triangle-strip'}});
+ PIPE.fog=P({layout:COMPAT?L0:LF,...(COMPAT?{depthStencil:ds(false),multisample:ms}:{}),vertex:{module:mF,entryPoint:'vsF',buffers:[{arrayStride:32,stepMode:'instance',attributes:[{shaderLocation:0,offset:0,format:'float32x4'},{shaderLocation:1,offset:16,format:'float32x4'}]}]},fragment:{module:mF,entryPoint:'fsF',targets:[{format:HF,blend:{color:{srcFactor:'one',dstFactor:'one-minus-src-alpha'},alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha'}}}]},primitive:{topology:'triangle-strip'}});
  PIPE.post=P({layout:LP,vertex:{module:mP,entryPoint:'vsQ'},fragment:{module:mP,entryPoint:'fsQ',targets:[{format:fmt}]}});Object.assign(PIPE.post,{__l:LP,__v:{module:mP,entryPoint:'vsQ'},__f:{module:mP,entryPoint:'fsQ'}});
  UB=dev.createBuffer({size:320,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
  CUB=dev.createBuffer({size:96*64,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
@@ -841,15 +847,15 @@ function makePipes(){
 }
 function resize(){
  const cv=$('#cv'),dpr=Math.min(devicePixelRatio||1,2);let w=Math.max(1,Math.round(cv.clientWidth*dpr)),h=Math.max(1,Math.round(cv.clientHeight*dpr));
- const cap=3.6e6;if(w*h>cap){const k=Math.sqrt(cap/(w*h));w=Math.round(w*k);h=Math.round(h*k)}
+ const cap=matchMedia('(pointer:coarse)').matches?2.2e6:3.6e6,mx=dev.limits.maxTextureDimension2D;let k=Math.min(1,Math.sqrt(cap/(w*h)),mx/w,mx/h);if(k<1){w=Math.floor(w*k);h=Math.floor(h*k)}
  if(RT.w===w&&RT.h===h)return;cv.width=w;cv.height=h;
  ['msaa','hdr','depth'].forEach(k=>RT[k]&&RT[k].destroy());
  RT.w=w;RT.h=h;
- RT.msaa=dev.createTexture({size:[w,h],sampleCount:4,format:'rgba16float',usage:GPUTextureUsage.RENDER_ATTACHMENT});
- RT.hdr=dev.createTexture({size:[w,h],format:'rgba16float',usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.TEXTURE_BINDING});
- RT.depth=dev.createTexture({size:[w,h],sampleCount:4,format:'depth32float',usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.TEXTURE_BINDING});
+ RT.msaa=dev.createTexture({size:[w,h],sampleCount:4,format:HF,usage:GPUTextureUsage.RENDER_ATTACHMENT});
+ RT.hdr=dev.createTexture({size:[w,h],format:HF,usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.TEXTURE_BINDING});
+ RT.depth=dev.createTexture({size:[w,h],sampleCount:4,format:'depth32float',usage:GPUTextureUsage.RENDER_ATTACHMENT|(COMPAT?0:GPUTextureUsage.TEXTURE_BINDING)});
  RT.mv=RT.msaa.createView();RT.hv=RT.hdr.createView();RT.dv=RT.depth.createView();
- RT.bgf=dev.createBindGroup({layout:BGLF,entries:[{binding:0,resource:RT.dv}]});
+ if(!COMPAT)RT.bgf=dev.createBindGroup({layout:BGLF,entries:[{binding:0,resource:RT.dv}]});
  RT.bgp=dev.createBindGroup({layout:BGLP,entries:[{binding:0,resource:RT.hv},{binding:1,resource:samp},{binding:2,resource:{buffer:PUB}},{binding:3,resource:{buffer:PQB}}]});
 }
 
@@ -1705,9 +1711,10 @@ function render(now){
  ps.setPipeline(PIPE.terr);ps.setVertexBuffer(0,TERR.vb);ps.setIndexBuffer(TERR.ib,'uint32');ps.drawIndexed(TERR.n);
  if(!camMode){ps.setPipeline(PIPE.blob);ps.setVertexBuffer(0,BLOB.vb);ps.setIndexBuffer(BLOB.ib,'uint32');ps.drawIndexed(BLOB.n)}
  ps.setPipeline(PIPE.sky);ps.draw(3);
+ if(COMPAT){ps.setPipeline(PIPE.fog);ps.setVertexBuffer(0,FOGB);ps.draw(4,56)}
  ps.end();
- const pf=enc.beginRenderPass({colorAttachments:[{view:RT.hv,loadOp:'load',storeOp:'store'}]});
- pf.setViewport(0,0,rw,rh,0,1);pf.setScissorRect(0,0,rw,rh);pf.setPipeline(PIPE.fog);pf.setBindGroup(0,BG0);pf.setBindGroup(1,RT.bgf);pf.setVertexBuffer(0,FOGB);pf.draw(4,56);pf.end();
+ if(!COMPAT){const pf=enc.beginRenderPass({colorAttachments:[{view:RT.hv,loadOp:'load',storeOp:'store'}]});
+ pf.setViewport(0,0,rw,rh,0,1);pf.setScissorRect(0,0,rw,rh);pf.setPipeline(PIPE.fog);pf.setBindGroup(0,BG0);pf.setBindGroup(1,RT.bgf);pf.setVertexBuffer(0,FOGB);pf.draw(4,56);pf.end();}
  if(NOPRESENT&&!GRAB){dev.queue.submit([enc.finish()]);return}
  const pp=enc.beginRenderPass({colorAttachments:[{view:GRAB?GRAB.view:ctx.getCurrentTexture().createView(),loadOp:'clear',clearValue:{r:0,g:0,b:0,a:1},storeOp:'store'}]});
  pp.setPipeline(GRAB?GRAB.pipe:PIPE.post);pp.setBindGroup(0,RT.bgp);pp.draw(3);pp.end();
@@ -1721,13 +1728,26 @@ function frame(t){
  requestAnimationFrame(frame);
 }
 // ================================================================ boot
+function failMsg(k){
+ const ua=navigator.userAgent,and=/Android/i.test(ua),url=location.href.replace(/[?&]openExternalBrowser=1/,'');
+ const chrome=and?`<a class="ob" href="intent://${url.replace(/^https?:\/\//,'')}#Intent;scheme=https;package=com.android.chrome;end">用 Chrome 開啟</a>`:'';
+ let m;
+ if(/SamsungBrowser/i.test(ua))m='三星網際網路（Samsung Internet）目前不支援 WebGPU，請改用 Chrome 開啟本頁。';
+ else if(/\bLine\/|FBAN|FBAV|FB_IAB|Instagram|MicroMessenger|; wv\)/i.test(ua))m='你正在 App 內建的瀏覽器中開啟，它不支援 WebGPU。請點右上角「⋯」選擇「用瀏覽器開啟」，或直接用 Chrome 開啟本頁。';
+ else if(k==='noadapter')m='瀏覽器支援 WebGPU，但無法使用這台裝置的顯示晶片。請更新手機系統與 Chrome 後再試；若仍不行，可在網址列輸入 chrome://flags，開啟「Unsafe WebGPU Support」後重新啟動 Chrome。';
+ else if(k==='nogpu')m='此瀏覽器不支援 WebGPU，請使用最新版 Chrome、Edge 或 Safari 18+ 開啟。';
+ else m='載入失敗：'+k;
+ $('#lmsg').innerHTML=m+(k==='nogpu'||/Samsung|Line|FB|Instagram|wv/i.test(ua)?chrome:'')+`<small class="dg">${k} · ${ua.replace(/[<>&]/g,'')}</small>`;
+}
+if(!navigator.gpu&&/\bLine\//i.test(navigator.userAgent)&&!/openExternalBrowser=1/.test(location.search)){location.replace(location.href+(location.search?'&':'?')+'openExternalBrowser=1')}
 (async()=>{
  try{
   await initGPU();
   lmsg('雕塑山稜…');await tick();await genWorld();
   await buildProps();
   lmsg('上傳至 GPU…');await tick();
-  makePipes();packMeshes();buildTerrain();rebuildHiker();
+  for(const f of['rgba16float','rgba8unorm']){HF=f;RT={};dev.pushErrorScope('validation');makePipes();resize();const ve=await dev.popErrorScope();if(!ve)break;console.warn('HDR target '+f+' unsupported:',ve.message)}
+  packMeshes();buildTerrain();rebuildHiker();
   H.x=SPAWN[0];H.z=SPAWN[1];H.yaw=SPAWN[2];H.y=walkY(H.x,H.z);CAM.yaw=H.yaw+Math.PI;CAM.tx=H.x;CAM.ty=H.y+1.1;CAM.tz=H.z;
   for(let i=0;i<14;i++)spawnTrash(false);
   const q=new URLSearchParams(location.search);if(q.has('tod'))tod=+q.get('tod');
@@ -1737,7 +1757,7 @@ function frame(t){
   addEventListener('beforeunload',save);document.addEventListener('visibilitychange',()=>{if(document.hidden)save()});setInterval(save,5000);
   $('#load').classList.add('off');setTimeout(()=>$('#hint').style.opacity=0,14000);
   requestAnimationFrame(frame);
- }catch(e){console.error(e);lmsg(String(e.message)==='nogpu'?'此瀏覽器不支援 WebGPU，請使用最新版 Chrome、Edge 或 Safari 18+ 開啟。':'載入失敗：'+e.message)}
+ }catch(e){console.error(e);failMsg(String(e.message))}
 })();
 </script>
 </body>
