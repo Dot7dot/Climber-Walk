@@ -27,7 +27,7 @@ const out = await minify(js, {
 });
 
 // 3) CSS + HTML
-let html = src.replace(m[0], '<script type="module">' + out.code + '</script>');
+let html = src.replace(m[0], () => '<script type="module">' + out.code + '</script>');
 html = html.replace(/<style>([\s\S]*?)<\/style>/, (_, c) => '<style>' + c
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .replace(/\s+/g, ' ')
