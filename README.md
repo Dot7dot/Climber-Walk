@@ -4,6 +4,12 @@
 
 ▶ **線上遊玩：** https://dot7dot.github.io/Climber-Walk/ （需支援 WebGPU 的瀏覽器：Chrome / Edge 113+、Safari 18+）
 
+### 無法開啟？
+
+- **三星網際網路（Samsung Internet）**、LINE／Facebook／Instagram 等 App 內建瀏覽器不支援 WebGPU：請用 Chrome 開啟（LINE 會自動改用外部瀏覽器，Android 上會提供「用 Chrome 開啟」按鈕）
+- Android 版 Chrome 需要 Android 12 以上；部分手機只提供 WebGPU「相容模式」，遊戲會自動切換到相容的繪製路徑
+- 若 Chrome 仍顯示無法使用顯示晶片，可在 `chrome://flags` 開啟「Unsafe WebGPU Support」後重新啟動 Chrome
+
 ## 場景元素（取材自實地照片）
 
 - 紅檜／扁柏霧林：筆直紅褐樹幹、下段長滿苔蘚、垂掛的松蘿與下垂的扇形枝葉
@@ -72,4 +78,4 @@ npm install
 npm run build
 ```
 
-目前建置大小：**約 131 KB（gzip 後約 53 KB）**，其中約 26 KB 為 270 種生物的資料表。
+目前建置大小：**約 156 KB（gzip 後約 64 KB）**，其中約 26 KB 為 270 種生物的資料表。
